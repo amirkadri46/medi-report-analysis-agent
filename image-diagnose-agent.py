@@ -4,13 +4,7 @@ from datetime import date
 
 import streamlit as st
 from PIL import Image, ImageOps, ImageEnhance
-
-# Handle fpdf2 import with fallback
-try:
-    from fpdf import FPDF
-except ImportError:
-    st.error("Please install fpdf2: pip install fpdf2")
-    st.stop()
+from fpdf import FPDF
 
 from agno.agent import Agent
 from agno.models.google import Gemini
@@ -168,17 +162,12 @@ def build_pdf_from_markdown(patient_info: dict, markdown_text: str, image_path: 
         pdf.set_x(pdf.l_margin)
         pdf.image(image_path, x=pdf.l_margin, y=pdf.get_y(), w=max_w)
         pdf.set_xy(pdf.l_margin, pdf.get_y() + img_h + 4)
-    except Exception as e:
-        pdf.ln(2)
-        pdf.multi_cell(epw, line_h, f"[Image could not be loaded: {str(e)}]")
+    except Exception:
+        pass
 
     # Render markdown lines
     for line in (markdown_text or "").splitlines():
-        try:
-            render_md_line(pdf, epw, line_h, line)
-        except Exception:
-            # Skip problematic lines
-            continue
+        render_md_line(pdf, epw, line_h, line)
 
     # Footer
     pdf.ln(4)
@@ -188,21 +177,12 @@ def build_pdf_from_markdown(patient_info: dict, markdown_text: str, image_path: 
     pdf.multi_cell(epw, 5, "AI-assisted report for educational purposes. Please have a qualified clinician review.")
     pdf.set_text_color(0, 0, 0)
 
-    try:
-        raw = pdf.output(dest="S")
-        if isinstance(raw, bytes):
-            return raw
-        elif isinstance(raw, (bytearray, memoryview)):
-            return bytes(raw)
-        else:
-            return str(raw).encode("latin-1", errors="ignore")
-    except Exception as e:
-        # Fallback: return a minimal PDF
-        pdf_fallback = FPDF()
-        pdf_fallback.add_page()
-        pdf_fallback.set_font("Helvetica", size=12)
-        pdf_fallback.cell(0, 10, "Report generation failed. Please try again.", ln=1)
-        return bytes(pdf_fallback.output(dest="S"))
+    raw = pdf.output(dest="S")
+    if isinstance(raw, bytes):
+        return raw
+    if isinstance(raw, (bytearray, memoryview)):
+        return bytes(raw)
+    return str(raw).encode("latin-1", errors="ignore")
 
 
 # ---------------- UI ----------------
@@ -262,7 +242,7 @@ if uploaded_file is not None and medical_agent:
                     "2) Key Findings (bulleted; include confidence %)\n"
                     "3) Diagnostic Assessment (primary diagnosis with confidence; differentials with brief rationale)\n"
                     "4) Patient-Friendly Explanation (plain language)\n"
-                    "5) References (2-3 items)\n"
+                    "5) References (2–3 items)\n"
                     "Be precise and avoid unsupported claims."
                 )
                 resp = medical_agent.run(prompt, images=[agno_image])
@@ -276,22 +256,12 @@ if uploaded_file is not None and medical_agent:
                 st.caption("Note: AI-generated analysis. Please have a qualified clinician review.")
 
                 # Build a readable PDF from the same markdown, with the displayed image
-                try:
-                    pdf_bytes = build_pdf_from_markdown(patient_info, report_md, image_path=tmp_path)
-                    st.session_state.pdf_bytes = pdf_bytes
-                    st.session_state.pdf_filename = (
-                        f"report_{patient_info.get('name','patient')}_{patient_info.get('study_date','')}"
-                        .strip("_").replace(" ", "_")
-                    )
-                except Exception as pdf_error:
-                    st.warning(f"PDF generation encountered an issue: {pdf_error}")
-                    # Create a simple fallback PDF
-                    fallback_pdf = FPDF()
-                    fallback_pdf.add_page()
-                    fallback_pdf.set_font("Helvetica", size=12)
-                    fallback_pdf.multi_cell(0, 10, "Report content:\n\n" + report_md[:500])
-                    st.session_state.pdf_bytes = bytes(fallback_pdf.output(dest="S"))
-                    st.session_state.pdf_filename = "report_fallback"
+                pdf_bytes = build_pdf_from_markdown(patient_info, report_md, image_path=tmp_path)
+                st.session_state.pdf_bytes = pdf_bytes
+                st.session_state.pdf_filename = (
+                    f"report_{patient_info.get('name','patient')}_{patient_info.get('study_date','')}"
+                    .strip("_").replace(" ", "_")
+                )
 
     except Exception as e:
         st.error(f"Analysis error: {e}")
